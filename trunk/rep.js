@@ -1,7 +1,19 @@
-xmlns="http://www.w3.org/2000/svg";
-xlink="http://www.w3.org/1999/xlink";
-svgr="http://granite.sru.edu/svgr";
+/*
+ * rep.js - Javascript SVG parser for extending the specification with <Replicate>
+ * http://code.google.com/p/svg-replicate/
+ *
+ * Requires: rgbcolor.js - http://www.phpied.com/rgb-color-parser-in-javascript/
+ */
+var xmlns="http://www.w3.org/2000/svg";
+var xlink="http://www.w3.org/1999/xlink";
+var svgr="http://granite.sru.edu/svgr";
+var xhtmlNS = "http://www.w3.org/1999/xhtml";
 root=document.documentElement;
+scriptFilePath = "svg-replicate/";
+
+// dynamically load required .js file(s)
+loadFile(scriptFilePath + "rgbcolor.js", "js")
+
 function init(evt){
 	var ReplicateElements=document.getElementsByTagNameNS(svgr,"replicate");
 	if(ReplicateElements.length==0){
@@ -129,6 +141,15 @@ function getValue(Rep,t){
 		var t=valueprop-firstindex;
 	}
 	else if (Rep.hasAttribute("from")){
+		// Handle named and Hex colors.
+		if(Rep.getAttribute("attributeName")=="fill" || Rep.getAttribute("attributeName")=="stroke"){
+			var newValue;
+			var color = new RGBColor(Rep.getAttribute("from"));
+			if(color.ok){
+				newValue = 'rgb('+parseInt(color.r,10)+','+parseInt(color.g,10)+','+parseInt(color.b,10)+')';
+				Rep.setAttributeNS(null, "from", newValue);
+			}
+		}
 		var F=Rep.getAttribute("from").replace(/^\s+|\s+$/g,"").match(/[^\d-\.]+|-?\d*\.?\d+/g);
 		var T=Rep.getAttribute("to").replace(/^\s+|\s+$/g,"").match(/[^\d-\.]+|-?\d*\.?\d+/g);
 	}
@@ -147,4 +168,13 @@ function numValue(from, to, t){
 	var value=from+(to-from)*t;
 	if(value.toString().indexOf("e")>-1) value=0;
 	return value;
+}
+
+function loadFile(FileName, FileType){
+	if(FileType=="js") {	
+		// load external JavaScript file
+    var s = document.createElementNS(xhtmlNS, "script");
+    s.setAttribute("src", FileName);
+    root.appendChild(s);
+	}
 }
