@@ -57,14 +57,14 @@ function replicate(ReplicateItem, k){
 		var t;
 		for (var i=0;i<ReplicateAttributeElements.length;i++){
 			var ReplicateAttributeItem=ReplicateAttributeElements.item(i);
-			if(ReplicateAttributeItem.hasAttribute("keySplines")) t=getKeySplineTime(ReplicateAttributeItem.getAttribute("keySplines").split(/[ *, *]|[ *]/g), t);
+			if(ReplicateAttributeItem.hasAttribute("keySplines")) t=getKeySplineTime(ReplicateAttributeItem.getAttribute("keySplines").split(/[ *, *]|[ *]/g), n/repeatCount, repeatCount);
 			else t=n/repeatCount;
 			var value=getValue(ReplicateAttributeItem, t);
 			Clone.setAttributeNS(null, ReplicateAttributeItem.getAttributeNS(null,"attributeName"), value);
 		}
 		for (var i=0;i<ReplicatePathElements.length;i++){
 			var ReplicatePathItem=ReplicatePathElements.item(i);
-			if(ReplicatePathItem.hasAttribute("keySplines")) t=getKeySplineTime(ReplicatePathItem.getAttribute("keySplines").split(/[ *, *]|[ *]/g), t);
+			if(ReplicatePathItem.hasAttribute("keySplines")) t=getKeySplineTime(ReplicatePathItem.getAttribute("keySplines").split(/[ *, *]|[ *]/g), n/repeatCount, repeatCount);
 			else t=n/repeatCount;
 			var Baseid=ReplicatePathItem.getAttribute("xlink:href");
 			if (Baseid==null) var Baseid=ReplicatePathItem.getAttributeNS(xlink,"xlink:href");
@@ -75,10 +75,48 @@ function replicate(ReplicateItem, k){
 		}
 		for (var i=0;i<ReplicateModifierElements.length;i++){
 			var ReplicateModifierItem=ReplicateModifierElements.item(i);
-			if(ReplicateModifierItem.hasAttribute("keySplines")) t=getKeySplineTime(ReplicateModifierItem.getAttribute("keySplines").split(/[ *, *]|[ *]/g), t);
+			if(ReplicateModifierItem.hasAttribute("keySplines")) t=getKeySplineTime(ReplicateModifierItem.getAttribute("keySplines").split(/[ *, *]|[ *]/g), n/repeatCount, repeatCount);
 			else t=n/repeatCount;
 			var modifierType=ReplicateModifierItem.getAttributeNS(null,"modifierType");
-			if (modifierType=="filter"){}
+			if (modifierType=="filter"){
+				var filterurl=Original.getAttribute("filter");
+				var reference=filterurl.split(/[#)]/g)[1];
+				var newId=reference+"-"+k+"-"+n;
+				if(document.getElementById(newId)) var newFilter=document.getElementById(newId);
+				else{
+					var referent=document.getElementById(reference);
+					var newFilter=referent.cloneNode("true");
+					newFilter.setAttribute("id",newId);
+					var ReferentNextSibling;
+					if (referent.nextSibling) ReferentNextSibling=referent.nextSibling;
+				}
+				var value=getValue(ReplicateModifierItem, t);
+				newFilter.setAttributeNS(null, ReplicateModifierItem.getAttribute("attributeName"), value);
+				Clone.setAttributeNS(null, "filter", "url(#"+newId+")");
+				if(ReferentNextSibling) referent.parentNode.insertBefore(newFilter, ReferentNextSibling);
+				else referent.parentNode.appendChild(newFilter);
+			}
+			else if (modifierType=="filterPrimitive" || modifierType.substring(0,2)=="fe"){
+				var filterurl=Original.getAttribute("filter");
+				var reference=filterurl.split(/[#)]/g)[1];
+				var newId=reference+"-"+k+"-"+n;
+				if(document.getElementById(newId)) var newFilter=document.getElementById(newId);
+				else{
+					var referent=document.getElementById(reference);
+					var newFilter=referent.cloneNode("true");
+					newFilter.setAttribute("id",newId);
+					var ReferentNextSibling;
+					if (referent.nextSibling) ReferentNextSibling=referent.nextSibling;
+				}
+				var Cnum=ReplicateModifierItem.getAttributeNS(null,"childNum");
+				var allChildren=newFilter.getElementsByTagName("*");
+				var properChild=allChildren.item(Cnum);
+				var value=getValue(ReplicateModifierItem, t);
+				properChild.setAttributeNS(null, ReplicateModifierItem.getAttribute("attributeName"), value);
+				Clone.setAttributeNS(null, "filter", "url(#"+newId+")");
+				if(ReferentNextSibling) referent.parentNode.insertBefore(newFilter, ReferentNextSibling);
+				else referent.parentNode.appendChild(newFilter);
+			}
 			else if (modifierType=="animate"){
 				var Cnum=ReplicateModifierItem.getAttributeNS(null,"childNum");
 				if(isNaN(parseInt(Cnum))) Cnum=ReplicateModifierItem.getAttributeNS(null,"childnum");
@@ -114,6 +152,19 @@ function replicate(ReplicateItem, k){
 					properStop.setAttributeNS(null, ReplicateModifierItem.getAttribute("attributeName"), value);
 					Clone.setAttributeNS(null, "fill", "url(#"+newId+")");
 				}
+				else if (modifierType=="pattern"){
+					var value=getValue(ReplicateModifierItem, t);
+					newFill.setAttributeNS(null, ReplicateModifierItem.getAttribute("attributeName"), value);
+					Clone.setAttributeNS(null, "fill", "url(#"+newId+")");					
+				}
+				else if(modifierType=="patternChild"){
+					var Cnum=ReplicateModifierItem.getAttributeNS(null,"childNum");
+					var allChildren=newFill.getElementsByTagName("*");
+					var properChild=allChildren.item(Cnum);
+					var value=getValue(ReplicateModifierItem, t);
+					properChild.setAttributeNS(null, ReplicateModifierItem.getAttribute("attributeName"), value);
+					Clone.setAttributeNS(null, "fill", "url(#"+newId+")");
+				}
 				if(ReferentNextSibling) referent.parentNode.insertBefore(newFill, ReferentNextSibling);
 				else referent.parentNode.appendChild(newFill);
 				// action: handle patterns
@@ -126,8 +177,36 @@ function replicate(ReplicateItem, k){
 	else Original.appendChild(ReplicateItem);
 }
 
-function getKeySplineTime(S, t){
-		return 3*t*(1-t)*(1-t)*S[1]+3*t*t*(1-t)*S[3]+t*t*t;
+function getKeySplineTime(S, t, repeatCount){
+		return CubicBezierAtTime(t,S[0],S[1],S[2],S[3],repeatCount)
+}
+
+// 1:1 conversion to js from webkit source files
+// UnitBezier.h, WebCore_animation_AnimationBase.cpp
+function CubicBezierAtTime(t,p1x,p1y,p2x,p2y,duration) {
+	var ax=0,bx=0,cx=0,ay=0,by=0,cy=0;
+	// `ax t^3 + bx t^2 + cx t' expanded using Horner's rule.
+	function sampleCurveX(t) {return ((ax*t+bx)*t+cx)*t;};
+	function sampleCurveY(t) {return ((ay*t+by)*t+cy)*t;};
+	function sampleCurveDerivativeX(t) {return (3.0*ax*t+2.0*bx)*t+cx;};
+	// The epsilon value to pass given that the animation is going to run over |dur| seconds. The longer the
+	// animation, the more precision is needed in the timing function result to avoid ugly discontinuities.
+	function solveEpsilon(duration) {return 1.0/(200.0*duration);};
+	function solve(x,epsilon) {return sampleCurveY(solveCurveX(x,epsilon));};
+	// Given an x value, find a parametric value it came from.
+	function solveCurveX(x,epsilon) {var t0,t1,t2,x2,d2,i;
+		function fabs(n) {if(n>=0) {return n;}else {return 0-n;}}; 
+		// First try a few iterations of Newton's method -- normally very fast.
+		for(t2=x, i=0; i<8; i++) {x2=sampleCurveX(t2)-x; if(fabs(x2)<epsilon) {return t2;} d2=sampleCurveDerivativeX(t2); if(fabs(d2)<1e-6) {break;} t2=t2-x2/d2;}
+		// Fall back to the bisection method for reliability.
+		t0=0.0; t1=1.0; t2=x; if(t2<t0) {return t0;} if(t2>t1) {return t1;}
+		while(t0<t1) {x2=sampleCurveX(t2); if(fabs(x2-x)<epsilon) {return t2;} if(x>x2) {t0=t2;}else {t1=t2;} t2=(t1-t0)*.5+t0;}
+		return t2; // Failure.
+	};
+	// Calculate the polynomial coefficients, implicit first and last control points are (0,0) and (1,1).
+	cx=3.0*p1x; bx=3.0*(p2x-p1x)-cx; ax=1.0-cx-bx; cy=3.0*p1y; by=3.0*(p2y-p1y)-cy; ay=1.0-cy-by;
+	// Convert from input time to parametric value in curve, then from that to output time.
+	return solve(t, solveEpsilon(duration));
 }
 
 function getValue(Rep,t){
